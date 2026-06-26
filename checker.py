@@ -9,28 +9,6 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 
-AIRPORT_CITIES = {
-    'TLV': ['tel aviv', 'tlv', 'ben gurion', 'ישראל', 'תל אביב'],
-    'MAD': ['madrid', 'mad', 'barajas', 'מדריד'],
-    'LHR': ['london', 'heathrow', 'lhr'],
-    'CDG': ['paris', 'charles de gaulle', 'cdg'],
-    'FCO': ['rome', 'fiumicino', 'fco'],
-    'BCN': ['barcelona', 'bcn'],
-    'JFK': ['new york', 'jfk', 'kennedy'],
-    'BKK': ['bangkok', 'bkk', 'suvarnabhumi'],
-    'DXB': ['dubai', 'dxb'],
-    'ATH': ['athens', 'ath'],
-}
-
-
-def _page_has_route(body_lower, origin, destination):
-    """Make sure the page actually shows results for the requested route."""
-    o_terms = AIRPORT_CITIES.get(origin.upper(), [origin.lower()])
-    d_terms = AIRPORT_CITIES.get(destination.upper(), [destination.lower()])
-    has_origin = any(t in body_lower for t in o_terms)
-    has_dest   = any(t in body_lower for t in d_terms)
-    return has_origin and has_dest
-
 
 def _browser_ctx(p):
     browser = p.chromium.launch(headless=True)
@@ -166,10 +144,6 @@ def _skyscanner(origin, destination, date, return_date='', trip_type='OW'):
             body       = page.inner_text('body')
             body_lower = body.lower()
 
-            if not _page_has_route(body_lower, origin, destination):
-                print(f'  Skyscanner: route {origin}→{destination} not confirmed on page')
-                return None
-
             if sum(1 for kw in ['nonstop', 'stop', 'economy', 'depart', 'arrive', 'hr']
                    if kw in body_lower) >= 3:
                 prices = [int(m.group(1).replace(',', ''))
@@ -202,10 +176,6 @@ def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
             final_url  = page.url or url
             body       = page.inner_text('body')
             body_lower = body.lower()
-
-            if not _page_has_route(body_lower, origin, destination):
-                print(f'  Hulyo: route {origin}→{destination} not confirmed on page')
-                return None
 
             flight_kws = ['טיסה', 'המראה', 'נחיתה', 'ישיר', 'עצירה',
                           'flight', 'depart', 'nonstop', 'economy']
@@ -248,10 +218,6 @@ def _elal(origin, destination, date, return_date='', trip_type='OW'):
             final_url  = page.url or url
             body       = page.inner_text('body')
             body_lower = body.lower()
-
-            if not _page_has_route(body_lower, origin, destination):
-                print(f'  El Al: route {origin}→{destination} not confirmed on page')
-                return None
 
             flight_kws = ['flight', 'depart', 'arrive', 'nonstop', 'economy',
                           'טיסה', 'המראה', 'נחיתה', 'מחיר', 'price', '$']
@@ -300,10 +266,6 @@ def _iberia(origin, destination, date, return_date='', trip_type='OW'):
             final_url  = page.url or url
             body       = page.inner_text('body')
             body_lower = body.lower()
-
-            if not _page_has_route(body_lower, origin, destination):
-                print(f'  Iberia: route {origin}→{destination} not confirmed on page')
-                return None
 
             flight_kws = ['flight', 'nonstop', 'economy', 'depart', 'arrive', 'iberia']
             if sum(1 for kw in flight_kws if kw.lower() in body_lower) < 2:

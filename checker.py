@@ -10,6 +10,12 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 
 
+def _page_has_route(body, origin, destination):
+    """Check IATA codes appear on page — works in any language."""
+    b = body.upper()
+    return origin.upper() in b and destination.upper() in b
+
+
 def _browser_ctx(p):
     browser = p.chromium.launch(headless=True)
     ctx = browser.new_context(
@@ -144,6 +150,10 @@ def _skyscanner(origin, destination, date, return_date='', trip_type='OW'):
             body       = page.inner_text('body')
             body_lower = body.lower()
 
+            if not _page_has_route(body, origin, destination):
+                print(f'  Skyscanner: {origin}/{destination} not on page')
+                return None
+
             if sum(1 for kw in ['nonstop', 'stop', 'economy', 'depart', 'arrive', 'hr']
                    if kw in body_lower) >= 3:
                 prices = [int(m.group(1).replace(',', ''))
@@ -176,6 +186,10 @@ def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
             final_url  = page.url or url
             body       = page.inner_text('body')
             body_lower = body.lower()
+
+            if not _page_has_route(body, origin, destination):
+                print(f'  Hulyo: {origin}/{destination} not on page')
+                return None
 
             flight_kws = ['טיסה', 'המראה', 'נחיתה', 'ישיר', 'עצירה',
                           'flight', 'depart', 'nonstop', 'economy']
@@ -218,6 +232,10 @@ def _elal(origin, destination, date, return_date='', trip_type='OW'):
             final_url  = page.url or url
             body       = page.inner_text('body')
             body_lower = body.lower()
+
+            if not _page_has_route(body, origin, destination):
+                print(f'  El Al: {origin}/{destination} not on page')
+                return None
 
             flight_kws = ['flight', 'depart', 'arrive', 'nonstop', 'economy',
                           'טיסה', 'המראה', 'נחיתה', 'מחיר', 'price', '$']
@@ -266,6 +284,10 @@ def _iberia(origin, destination, date, return_date='', trip_type='OW'):
             final_url  = page.url or url
             body       = page.inner_text('body')
             body_lower = body.lower()
+
+            if not _page_has_route(body, origin, destination):
+                print(f'  Iberia: {origin}/{destination} not on page')
+                return None
 
             flight_kws = ['flight', 'nonstop', 'economy', 'depart', 'arrive', 'iberia']
             if sum(1 for kw in flight_kws if kw.lower() in body_lower) < 2:

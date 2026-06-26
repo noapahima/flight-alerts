@@ -8,7 +8,8 @@ from PyQt5.QtGui import QColor, QLinearGradient
 from PyQt5.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QDateEdit, QDialog,
     QDialogButtonBox, QFormLayout, QFrame, QGraphicsDropShadowEffect,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QMessageBox, QPushButton,
     QRadioButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
 )
 
@@ -16,6 +17,84 @@ import checker
 import notifier
 import storage
 from airport_input import AirportField
+
+AIRLINES = [
+    'El Al', 'Iberia', 'Ryanair', 'Wizz Air', 'easyJet',
+    'Lufthansa', 'Swiss', 'Air France', 'KLM', 'British Airways',
+    'Turkish Airlines', 'Aegean', 'LOT', 'Air Europa', 'Vueling',
+    'TAP Air Portugal', 'Finnair', 'Austrian', 'Norwegian',
+    'SKY express', 'Transavia', 'Pegasus', 'Arkia', 'Israir',
+]
+
+
+class AirlinePickerButton(QPushButton):
+    """Button that opens a checkbox popup for selecting airlines."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._selected = []
+        self._update_label()
+        self.clicked.connect(self._open_picker)
+        self.setStyleSheet(
+            'QPushButton { text-align:left; padding: 6px 10px; '
+            'border:1.5px solid #CBD5E1; border-radius:8px; '
+            'background:white; color:#0F172A; font-size:12px; }'
+            'QPushButton:hover { border-color:#3B82F6; }'
+        )
+
+    def _update_label(self):
+        if not self._selected:
+            self.setText('All airlines  ▾')
+        elif len(self._selected) <= 3:
+            self.setText(', '.join(self._selected) + '  ▾')
+        else:
+            self.setText(f'{len(self._selected)} airlines selected  ▾')
+
+    def _open_picker(self):
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle('Select Airlines')
+        dlg.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        dlg.setStyleSheet(
+            'QDialog { background:white; border:1.5px solid #CBD5E1; border-radius:10px; }'
+            'QCheckBox { font-size:12px; color:#0F172A; padding:4px 8px; }'
+            'QCheckBox:hover { background:#F1F5F9; border-radius:6px; }'
+            'QPushButton { background:#3B82F6; color:white; border-radius:6px; '
+            'padding:6px 18px; font-size:12px; border:none; }'
+            'QPushButton:hover { background:#2563EB; }'
+        )
+        v = QVBoxLayout(dlg); v.setContentsMargins(12, 12, 12, 12); v.setSpacing(4)
+
+        header = QLabel('Select airlines (leave all unchecked = any)')
+        header.setStyleSheet('font-size:11px; color:#64748B; margin-bottom:4px;')
+        v.addWidget(header)
+
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(220); scroll.setStyleSheet('border:none;')
+        inner = QWidget(); inner_v = QVBoxLayout(inner); inner_v.setSpacing(0)
+        cbs = []
+        for name in AIRLINES:
+            cb = QCheckBox(name)
+            cb.setChecked(name in self._selected)
+            inner_v.addWidget(cb)
+            cbs.append(cb)
+        scroll.setWidget(inner)
+        v.addWidget(scroll)
+
+        btn = QPushButton('Done')
+        btn.clicked.connect(dlg.accept)
+        v.addWidget(btn)
+
+        # Position below the button
+        pos = self.mapToGlobal(self.rect().bottomLeft())
+        dlg.move(pos)
+        dlg.resize(260, 310)
+
+        if dlg.exec_() == QDialog.Accepted:
+            self._selected = [cb.text() for cb in cbs if cb.isChecked()]
+            self._update_label()
+
+    def selected_airlines(self):
+        return self._selected
 
 # ── Stylesheet ─────────────────────────────────────────────────────────────
 
@@ -564,10 +643,9 @@ class FlightWidget(QWidget):
 
         # ── Airline filter ──
         av = QVBoxLayout(); av.setSpacing(3)
-        av.addWidget(self._fl('AIRLINE (OPTIONAL)'))
-        self.airline_e = QLineEdit()
-        self.airline_e.setPlaceholderText('e.g. El Al, Iberia  (leave blank for all)')
-        av.addWidget(self.airline_e)
+        av.addWidget(self._fl('AIRLINES'))
+        self.airline_btn = AirlinePickerButton()
+        av.addWidget(self.airline_btn)
         lay.addLayout(av)
 
         # ── Email ──
@@ -611,7 +689,7 @@ class FlightWidget(QWidget):
         price     = self.price_e.text().strip()
         email     = self.email_e.text().strip()
         incl_bag  = self.luggage_cb.isChecked()
-        airlines  = [a.strip() for a in self.airline_e.text().split(',') if a.strip()]
+        airlines  = self.airline_btn.selected_airlines()
 
         if len(origin) != 3 or len(dest) != 3:
             QMessageBox.warning(self, 'Invalid',
@@ -638,6 +716,7 @@ class FlightWidget(QWidget):
         storage.save(self.config)
         self._insert_card(alert)
         self.origin_e.clear(); self.dest_e.clear(); self.price_e.clear()
+        self.airline_btn._selected = []; self.airline_btn._update_label()
         self.adjustSize()
         # Run an immediate check for this alert without waiting for the next cycle
         threading.Thread(target=self._check_single, args=(alert,), daemon=True).start()

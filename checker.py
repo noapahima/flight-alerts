@@ -324,10 +324,30 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
                 if v not in [p for _, p, _ in airline_prices]:
                     airline_prices.append(('Google Flights', v, search_url))
 
-            final_url = page.url or search_url
             if not airline_prices:
                 return None
-            # Return list of (airline, price, url) for filtering upstream
+
+            # Try to click the cheapest flight card to get its direct booking URL
+            cheapest = min(airline_prices, key=lambda x: x[1])
+            cheapest_airline, cheapest_price, cheapest_url = cheapest
+            try:
+                # Find all flight list items and click the first (cheapest shown first)
+                cards = page.locator('li[data-gs], div[jsname][data-id]').all()
+                if not cards:
+                    cards = page.locator('div[role="listitem"]').all()
+                if cards:
+                    with page.expect_navigation(timeout=8000):
+                        cards[0].click()
+                    booking_url = page.url
+                    if 'booking' in booking_url and 'tfs=' in booking_url:
+                        # Update cheapest entry with the direct booking URL
+                        airline_prices = [
+                            (a, p, booking_url if p == cheapest_price else u)
+                            for a, p, u in airline_prices
+                        ]
+            except Exception:
+                pass  # keep the airline direct URL as fallback
+
             return airline_prices
         finally:
             browser.close()

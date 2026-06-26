@@ -614,51 +614,53 @@ class FlightWidget(QWidget):
         # ── Price + interval ──
         pi_row = QHBoxLayout(); pi_row.setSpacing(10)
 
-        pv = QVBoxLayout(); pv.setSpacing(3)
+        ILS_RATE = 3.0
+        self._price_updating = False  # prevent feedback loop
 
-        # Toggle label — click to switch currency
-        self.price_currency = '$'
-        self.price_lbl = QLabel('MAX PRICE ($)')
-        self.price_lbl.setObjectName('field_lbl')
-        self.price_lbl.setCursor(Qt.PointingHandCursor)
-        self.price_lbl.setToolTip('Click to switch currency')
-        pv.addWidget(self.price_lbl)
+        pv = QVBoxLayout(); pv.setSpacing(3)
+        pv.addWidget(self._fl('MAX PRICE'))
+
+        price_row = QHBoxLayout(); price_row.setSpacing(6)
 
         self.price_e = QLineEdit()
-        self.price_e.setPlaceholderText('500')
-        pv.addWidget(self.price_e)
+        self.price_e.setPlaceholderText('$')
+        self.price_e.setMinimumWidth(60)
 
-        self.price_convert_lbl = QLabel('')
-        self.price_convert_lbl.setStyleSheet(
-            'font-size:11px;color:#94A3B8;background:transparent;padding:1px 2px;')
-        pv.addWidget(self.price_convert_lbl)
+        sep = QLabel('=')
+        sep.setStyleSheet('color:#94A3B8;font-size:13px;background:transparent;')
+        sep.setAlignment(Qt.AlignCenter)
 
-        ILS_RATE = 3.0
+        self.price_ils_e = QLineEdit()
+        self.price_ils_e.setPlaceholderText('₪')
+        self.price_ils_e.setMinimumWidth(60)
 
-        def _update_conversion():
+        price_row.addWidget(self.price_e)
+        price_row.addWidget(sep)
+        price_row.addWidget(self.price_ils_e)
+        pv.addLayout(price_row)
+
+        def _usd_changed():
+            if self._price_updating: return
+            self._price_updating = True
             txt = self.price_e.text().strip()
-            if not txt.replace('.', '', 1).isdigit() or not txt:
-                self.price_convert_lbl.setText('')
-                return
-            v = float(txt)
-            if self.price_currency == '$':
-                self.price_convert_lbl.setText(f'≈ ₪{v * ILS_RATE:,.0f}')
+            if txt.replace('.','',1).isdigit() and txt:
+                self.price_ils_e.setText(f'{float(txt) * ILS_RATE:.0f}')
             else:
-                self.price_convert_lbl.setText(f'≈ ${v / ILS_RATE:,.0f}')
+                self.price_ils_e.clear()
+            self._price_updating = False
 
-        def _toggle_currency(event):
-            if self.price_currency == '$':
-                self.price_currency = '₪'
-                self.price_lbl.setText('MAX PRICE (₪)')
-                self.price_e.setPlaceholderText('1850')
+        def _ils_changed():
+            if self._price_updating: return
+            self._price_updating = True
+            txt = self.price_ils_e.text().strip()
+            if txt.replace('.','',1).isdigit() and txt:
+                self.price_e.setText(f'{float(txt) / ILS_RATE:.0f}')
             else:
-                self.price_currency = '$'
-                self.price_lbl.setText('MAX PRICE ($)')
-                self.price_e.setPlaceholderText('500')
-            _update_conversion()
+                self.price_e.clear()
+            self._price_updating = False
 
-        self.price_lbl.mousePressEvent = _toggle_currency
-        self.price_e.textChanged.connect(lambda _: _update_conversion())
+        self.price_e.textChanged.connect(lambda _: _usd_changed())
+        self.price_ils_e.textChanged.connect(lambda _: _ils_changed())
 
         iv = QVBoxLayout(); iv.setSpacing(3)
         iv.addWidget(self._fl('CHECK EVERY'))
@@ -737,11 +739,8 @@ class FlightWidget(QWidget):
                 'Tip: type a city or country name to see suggestions.')
             return
         if not price.replace('.', '', 1).isdigit():
-            QMessageBox.warning(self, 'Invalid', 'Enter a valid max price')
+            QMessageBox.warning(self, 'Invalid', 'Enter a max price in $ or ₪')
             return
-        # Convert to USD if user entered ILS
-        price_usd = float(price) / 3.0 if self.price_currency == '₪' else float(price)
-        price = str(round(price_usd, 2))
         if '@' not in email:
             QMessageBox.warning(self, 'Invalid', 'Enter a valid email address')
             return
@@ -758,7 +757,8 @@ class FlightWidget(QWidget):
         self.config['alerts'].append(alert)
         storage.save(self.config)
         self._insert_card(alert)
-        self.origin_e.clear(); self.dest_e.clear(); self.price_e.clear()
+        self.origin_e.clear(); self.dest_e.clear()
+        self.price_e.clear(); self.price_ils_e.clear()
         self.airline_btn._selected = []; self.airline_btn._update_label()
         self.adjustSize()
         # Run an immediate check for this alert without waiting for the next cycle

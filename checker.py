@@ -314,7 +314,6 @@ def _iberia(origin, destination, date, return_date='', trip_type='OW'):
 SOURCES = {
     'Google Flights': _google_flights,
     'Skyscanner':     _skyscanner,
-    'Hulyo':          _hulyo,
     'El Al':          _elal,
     'Iberia':         _iberia,
 }

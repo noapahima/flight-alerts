@@ -223,8 +223,11 @@ def _parse_gf_airlines(body_text, base_url, origin='', destination='',
                 break
         if not price_usd or not (100 < price_usd < 15000):
             continue
-        airline = None
+        # Skip Business Class results — only Economy
         block_lower = block.lower()
+        if 'business class' in block_lower or 'first class' in block_lower:
+            continue
+        airline = None
         for name in _KNOWN_AIRLINES:
             if name in block_lower:
                 airline = name.title()

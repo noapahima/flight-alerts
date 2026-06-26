@@ -331,7 +331,7 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
 
             # Try to click the cheapest flight card to get its direct booking URL
             cheapest = min(airline_prices, key=lambda x: x[1])
-            cheapest_airline, cheapest_price, cheapest_url = cheapest
+            cheapest_airline, cheapest_price, cheapest_url = cheapest[0], cheapest[1], cheapest[2]
             try:
                 # Find all flight list items and click the first (cheapest shown first)
                 cards = page.locator('li[data-gs], div[jsname][data-id]').all()

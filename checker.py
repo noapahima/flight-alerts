@@ -66,6 +66,55 @@ def _dismiss(page):
             pass
 
 
+_KNOWN_AIRLINES = [
+    'el al', 'iberia', 'ryanair', 'wizz', 'easyjet', 'lufthansa', 'swiss',
+    'air france', 'klm', 'turkish', 'aegean', 'sky express', 'lot', 'air europa',
+    'british airways', 'alitalia', 'ita airways', 'vueling', 'transavia',
+    'tap air portugal', 'finnair', 'austrian', 'brussels airlines', 'norwegian',
+    'pegasus', 'sun express', 'arkia', 'israir',
+]
+
+
+def _parse_gf_airlines(body_text, base_url):
+    """Extract (airline_name, price_usd, url) tuples from Google Flights page text."""
+    results = []
+    # Split into flight blocks — each ends with "round trip" or "one way"
+    blocks = re.split(r'\n(?=\d{1,2}:\d{2})', body_text)
+    for block in blocks:
+        lines = [l.strip() for l in block.split('\n') if l.strip()]
+        # Find price line (₪ or $)
+        price_usd = None
+        for line in lines:
+            m = re.search(r'₪\s*([\d,]+)', line)
+            if m:
+                price_usd = int(m.group(1).replace(',', '')) // 4
+                break
+            m = re.search(r'\$\s*(\d{2,4}(?:,\d{3})*)', line)
+            if m:
+                price_usd = int(m.group(1).replace(',', ''))
+                break
+        if not price_usd or not (100 < price_usd < 15000):
+            continue
+        # Find airline name — look for known airlines in block
+        airline = None
+        block_lower = block.lower()
+        for name in _KNOWN_AIRLINES:
+            if name in block_lower:
+                # Capitalise each word
+                airline = name.title()
+                break
+        if not airline:
+            # Try to find any capitalised non-time line as airline name
+            for line in lines[1:4]:
+                if re.match(r'^[A-Z][a-z]', line) and not re.match(r'^\d', line):
+                    if 'hr' not in line and 'min' not in line and '–' not in line:
+                        airline = line
+                        break
+        if airline:
+            results.append((airline, price_usd, base_url))
+    return results
+
+
 # ── Google Flights (primary) ─────────────────────────────────────────────────
 
 def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
@@ -129,22 +178,20 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
                 except Exception:
                     pass
 
-            # Also parse from DOM text — Google shows ₪ (ILS) prices for Israeli users
+            # Parse DOM — Google shows ₪ prices; extract (airline, price) pairs
             body_text = page.inner_text('body')
-            for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body_text):
-                v = int(m.group(1).replace(',', ''))
-                if 100 < v < 15000:
-                    aria_prices.append(v)
-            for m in re.finditer(r'₪\s*([\d,]+)', body_text):
-                v = int(m.group(1).replace(',', '')) // 4  # ₪ → USD approx
-                if 100 < v < 15000:
-                    aria_prices.append(v)
+            airline_prices = _parse_gf_airlines(body_text, search_url)
 
-            all_prices = sorted(set(aria_prices + captured_prices))
+            # Merge with network-intercepted prices (no airline info)
+            for v in aria_prices + captured_prices:
+                if v not in [p for _, p, _ in airline_prices]:
+                    airline_prices.append(('Google Flights', v, search_url))
 
             final_url = page.url or search_url
-            all_prices = sorted(set(all_prices))
-            return (min(all_prices), final_url) if all_prices else None
+            if not airline_prices:
+                return None
+            # Return list of (airline, price, url) for filtering upstream
+            return airline_prices
         finally:
             browser.close()
 
@@ -349,18 +396,37 @@ SOURCES = {
 
 def get_cheapest_price(origin, destination, date,
                        return_date='', trip_type='OW', include_luggage=False,
-                       amadeus_key='', amadeus_secret=''):
+                       amadeus_key='', amadeus_secret='', airlines=None):
+    """airlines: optional list of airline name strings to filter results."""
     results = {}  # name -> (price, url)
+
+    def _airline_matches(name):
+        if not airlines:
+            return True
+        nl = name.lower()
+        return any(a.lower() in nl or nl in a.lower() for a in airlines)
 
     def run(name, fn):
         try:
             res = fn(origin, destination, date, return_date, trip_type)
-            if res:
-                price, url = res
-                results[name] = (price, url)
-                print(f'  {name}: ${price}')
-            else:
+            if res is None:
                 print(f'  {name}: no results')
+                return
+            # Google Flights returns list of (airline, price, url)
+            if isinstance(res, list):
+                for airline, price, url in res:
+                    if _airline_matches(airline):
+                        results[airline] = (price, url)
+                        print(f'  {airline}: ${price}')
+                if res and not any(_airline_matches(a) for a, _, _ in res):
+                    print(f'  {name}: no results matching airline filter')
+            else:
+                price, url = res
+                if _airline_matches(name):
+                    results[name] = (price, url)
+                    print(f'  {name}: ${price}')
+                else:
+                    print(f'  {name}: filtered out by airline preference')
         except Exception as e:
             print(f'  {name} error: {e}')
 

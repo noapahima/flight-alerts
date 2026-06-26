@@ -562,6 +562,14 @@ class FlightWidget(QWidget):
         bag_row.addStretch()
         lay.addLayout(bag_row)
 
+        # ── Airline filter ──
+        av = QVBoxLayout(); av.setSpacing(3)
+        av.addWidget(self._fl('AIRLINE (OPTIONAL)'))
+        self.airline_e = QLineEdit()
+        self.airline_e.setPlaceholderText('e.g. El Al, Iberia  (leave blank for all)')
+        av.addWidget(self.airline_e)
+        lay.addLayout(av)
+
         # ── Email ──
         ev = QVBoxLayout(); ev.setSpacing(3)
         ev.addWidget(self._fl('ALERT EMAIL'))
@@ -603,6 +611,7 @@ class FlightWidget(QWidget):
         price     = self.price_e.text().strip()
         email     = self.email_e.text().strip()
         incl_bag  = self.luggage_cb.isChecked()
+        airlines  = [a.strip() for a in self.airline_e.text().split(',') if a.strip()]
 
         if len(origin) != 3 or len(dest) != 3:
             QMessageBox.warning(self, 'Invalid',
@@ -623,6 +632,7 @@ class FlightWidget(QWidget):
             'date': date, 'return_date': ret_date,
             'trip_type': trip_type, 'include_luggage': incl_bag,
             'max_price': float(price), 'email': email,
+            'airlines': airlines,
         }
         self.config['alerts'].append(alert)
         storage.save(self.config)
@@ -696,7 +706,8 @@ class FlightWidget(QWidget):
             result = checker.get_cheapest_price(
                 alert['origin'], alert['destination'], alert['date'],
                 alert.get('return_date', ''), alert.get('trip_type', 'OW'),
-                alert.get('include_luggage', False))
+                alert.get('include_luggage', False),
+                airlines=alert.get('airlines') or None)
             if result:
                 self.sig.price_result.emit(
                     alert['id'], result['min_price'],
@@ -717,7 +728,8 @@ class FlightWidget(QWidget):
                 result = checker.get_cheapest_price(
                     a['origin'], a['destination'], a['date'],
                     a.get('return_date', ''), a.get('trip_type', 'OW'),
-                    a.get('include_luggage', False))
+                    a.get('include_luggage', False),
+                    airlines=a.get('airlines') or None)
                 if result:
                     self.sig.price_result.emit(
                         a['id'], result['min_price'],

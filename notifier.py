@@ -132,11 +132,12 @@ def send_price_alert(api_key, to_email, alert, price, currency,
         '</div></body></html>'
     )
 
+    airline_names = ', '.join(sorted(all_results.keys())) if all_results else src
     resend.api_key = api_key
     resend.Emails.send({
         'from':    'Flight Alerts <onboarding@resend.dev>',
         'to':      [to_email],
-        'subject': f'✈ {o} → {d}  |  {currency} {price:.0f}  via {src}',
+        'subject': f'✈ {o} → {d}  |  {currency} {price:.0f}  —  {airline_names}',
         'html':    html,
     })
 

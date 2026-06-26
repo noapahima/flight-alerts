@@ -30,7 +30,8 @@ def main():
             result = checker.get_cheapest_price(
                 alert['origin'], alert['destination'], alert['date'],
                 alert.get('return_date', ''), alert.get('trip_type', 'OW'),
-                alert.get('include_luggage', False))
+                alert.get('include_luggage', False),
+                airlines=alert.get('airlines') or None)
 
             if result:
                 price = result['min_price']

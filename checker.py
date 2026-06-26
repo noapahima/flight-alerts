@@ -75,14 +75,146 @@ _KNOWN_AIRLINES = [
 ]
 
 
-def _parse_gf_airlines(body_text, base_url):
-    """Extract (airline_name, price_usd, url) tuples from Google Flights page text."""
+def airline_booking_url(airline, origin, destination, date,
+                        return_date='', trip_type='OW'):
+    """Return a direct booking URL for the given airline and route."""
+    o, d = origin.upper(), destination.upper()
+    dep  = datetime.strptime(date, '%Y-%m-%d')
+    al   = airline.lower()
+
+    if 'el al' in al or 'elal' in al:
+        fmt = dep.strftime('%d/%m/%Y')
+        url = (f"https://www.elal.com/en/Flights-And-Destinations/Book-Flights/Pages/default.aspx"
+               f"#outboundDate={fmt}&origin={o}&destination={d}&adults=1"
+               f"&tripType={'2' if trip_type == 'RT' else '1'}")
+        if trip_type == 'RT' and return_date:
+            ret = datetime.strptime(return_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+            url += f"&inboundDate={ret}"
+        return url
+
+    if 'iberia' in al:
+        url = (f"https://www.iberia.com/us/flights/search/"
+               f"?originAirport={o}&destinationAirport={d}"
+               f"&departDate={date}&adults=1&cabin=Y"
+               f"&tripType={'RT' if trip_type == 'RT' else 'OW'}")
+        if trip_type == 'RT' and return_date:
+            url += f"&returnDate={return_date}"
+        return url
+
+    if 'ryanair' in al:
+        fmt = dep.strftime('%Y-%m-%d')
+        url = f"https://www.ryanair.com/en/us/booking/home/{o}/{d}/{fmt}"
+        if trip_type == 'RT' and return_date:
+            url += f"/{return_date}"
+        return url
+
+    if 'wizz' in al:
+        fmt = dep.strftime('%Y-%m-%d')
+        url = (f"https://wizzair.com/en-gb/booking/select-flight"
+               f"/{o}/{d}/{fmt}")
+        if trip_type == 'RT' and return_date:
+            url += f"/{return_date}"
+        return url + "/1/0/0"
+
+    if 'easyjet' in al or 'easy jet' in al:
+        return (f"https://www.easyjet.com/en/cheap-flights/{o.lower()}/{d.lower()}"
+                f"?departing={dep.strftime('%d/%m/%Y')}")
+
+    if 'lufthansa' in al:
+        return (f"https://www.lufthansa.com/us/en/flights-from-{o.lower()}-to-{d.lower()}"
+                f"?flightType={'round-trip' if trip_type == 'RT' else 'one-way'}"
+                f"&outward={date}")
+
+    if 'swiss' in al:
+        return (f"https://www.swiss.com/us/en/book/flights"
+                f"?origin={o}&destination={d}&outboundDate={date}"
+                f"&tripType={'RT' if trip_type == 'RT' else 'OW'}&adults=1")
+
+    if 'air france' in al:
+        ret_param = f"&returnDate={return_date}" if trip_type == 'RT' and return_date else ''
+        return (f"https://wwws.airfrance.us/search/offers?"
+                f"pax=1:0:0:0:0:0:0:0&cabin=EC&lang=en"
+                f"&tripType={'ROUND_TRIP' if trip_type == 'RT' else 'ONE_WAY'}"
+                f"&segments=1::{o}:{date}:{d}{ret_param}")
+
+    if 'klm' in al:
+        ret_param = f"&returnDate={return_date}" if trip_type == 'RT' and return_date else ''
+        return (f"https://www.klm.com/search/offers?"
+                f"pax=1:0:0:0:0:0:0:0&cabin=EC"
+                f"&tripType={'ROUND_TRIP' if trip_type == 'RT' else 'ONE_WAY'}"
+                f"&segments=1::{o}:{date}:{d}{ret_param}")
+
+    if 'british' in al or 'ba' == al:
+        return (f"https://www.britishairways.com/travel/book/public/en_us"
+                f"#outboundDate={date}&origin={o}&destination={d}"
+                f"&cabin=M&adult=1&tripType={'RT' if trip_type == 'RT' else 'OW'}")
+
+    if 'turkish' in al:
+        return (f"https://www.turkishairlines.com/en-us/flights/from-{o.lower()}-to-{d.lower()}/"
+                f"?date={date}&tripType={'ROUND_TRIP' if trip_type == 'RT' else 'ONE_WAY'}")
+
+    if 'aegean' in al:
+        return (f"https://en.aegeanair.com/book-online/flight-results/"
+                f"?origin={o}&destination={d}&outboundDate={date}"
+                f"&tripType={'RT' if trip_type == 'RT' else 'OW'}&adults=1")
+
+    if 'lot' in al:
+        return (f"https://www.lot.com/us/en/flight-search/results"
+                f"?origin={o}&destination={d}&departureDate={date}"
+                f"&tripType={'ROUND_TRIP' if trip_type == 'RT' else 'ONE_WAY'}&passengerType=ADT")
+
+    if 'air europa' in al:
+        return (f"https://booking.aireuropa.com/shop/flights"
+                f"?origin={o}&destination={d}&departureDate={date}&adults=1"
+                f"&tripType={'RT' if trip_type == 'RT' else 'OW'}")
+
+    if 'vueling' in al:
+        return (f"https://www.vueling.com/en/book-your-flight/from-{o.lower()}-to-{d.lower()}"
+                f"?date={date}")
+
+    if 'tap' in al:
+        return (f"https://www.flytap.com/en-us/book-flights"
+                f"?origin={o}&destination={d}&departDate={date}"
+                f"&tripType={'RT' if trip_type == 'RT' else 'OW'}&adults=1")
+
+    if 'finnair' in al:
+        return (f"https://www.finnair.com/en/gb/booking?origin={o}&destination={d}"
+                f"&departureDate={date}&tripType={'RETURN' if trip_type == 'RT' else 'ONEWAY'}&adult=1")
+
+    if 'norwegian' in al:
+        return (f"https://www.norwegian.com/en/booking/flight-search"
+                f"?D_City={o}&A_City={d}&TripType={'R' if trip_type == 'RT' else 'S'}"
+                f"&D_Day={dep.day}&D_Month={dep.strftime('%Y-%m')}&IncludeTransit=true")
+
+    if 'transavia' in al:
+        return (f"https://www.transavia.com/en-EU/book-a-flight/flights/"
+                f"?searchType={'ROUND_TRIP' if trip_type == 'RT' else 'ONE_WAY'}"
+                f"&origin={o}&destination={d}&outboundDate={date}&adults=1")
+
+    if 'sky express' in al or 'skyexpress' in al:
+        return f"https://www.skyexpress.gr/en/book-now/?from={o}&to={d}&date={date}"
+
+    if 'arkia' in al:
+        return f"https://www.arkia.com/en/flights?from={o}&to={d}&date={date}&adults=1"
+
+    if 'israir' in al:
+        return f"https://www.israirairlines.com/en/book/?from={o}&to={d}&date={date}"
+
+    # Fallback: Google Flights pre-filled search
+    tt_str = 'round+trip' if trip_type == 'RT' else 'one+way'
+    q = f"{tt_str}+flights+from+{o}+to+{d}+on+{date}"
+    if trip_type == 'RT' and return_date:
+        q += f"+return+{return_date}"
+    return f"https://www.google.com/travel/flights?hl=en&q={q}"
+
+
+def _parse_gf_airlines(body_text, base_url, origin='', destination='',
+                       date='', return_date='', trip_type='OW'):
+    """Extract (airline_name, price_usd, direct_url) tuples from Google Flights page text."""
     results = []
-    # Split into flight blocks — each ends with "round trip" or "one way"
     blocks = re.split(r'\n(?=\d{1,2}:\d{2})', body_text)
     for block in blocks:
         lines = [l.strip() for l in block.split('\n') if l.strip()]
-        # Find price line (₪ or $)
         price_usd = None
         for line in lines:
             m = re.search(r'₪\s*([\d,]+)', line)
@@ -95,23 +227,26 @@ def _parse_gf_airlines(body_text, base_url):
                 break
         if not price_usd or not (100 < price_usd < 15000):
             continue
-        # Find airline name — look for known airlines in block
         airline = None
         block_lower = block.lower()
         for name in _KNOWN_AIRLINES:
             if name in block_lower:
-                # Capitalise each word
                 airline = name.title()
                 break
         if not airline:
-            # Try to find any capitalised non-time line as airline name
             for line in lines[1:4]:
                 if re.match(r'^[A-Z][a-z]', line) and not re.match(r'^\d', line):
                     if 'hr' not in line and 'min' not in line and '–' not in line:
                         airline = line
                         break
         if airline:
-            results.append((airline, price_usd, base_url))
+            # Use direct airline booking URL if we have route info
+            if origin and destination and date:
+                url = airline_booking_url(airline, origin, destination,
+                                          date, return_date, trip_type)
+            else:
+                url = base_url
+            results.append((airline, price_usd, url))
     return results
 
 
@@ -180,7 +315,9 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
 
             # Parse DOM — Google shows ₪ prices; extract (airline, price) pairs
             body_text = page.inner_text('body')
-            airline_prices = _parse_gf_airlines(body_text, search_url)
+            airline_prices = _parse_gf_airlines(
+                body_text, search_url,
+                origin, destination, date, return_date, trip_type)
 
             # Merge with network-intercepted prices (no airline info)
             for v in aria_prices + captured_prices:

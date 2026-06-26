@@ -53,7 +53,7 @@ class AirlinePickerButton(QPushButton):
     def _open_picker(self):
         dlg = QDialog(self.window())
         dlg.setWindowTitle('Select Airlines')
-        dlg.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        dlg.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         dlg.setStyleSheet(
             'QDialog { background:white; border:1.5px solid #CBD5E1; border-radius:10px; }'
             'QCheckBox { font-size:12px; color:#0F172A; padding:4px 8px; }'

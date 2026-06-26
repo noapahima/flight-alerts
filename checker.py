@@ -83,14 +83,10 @@ def airline_booking_url(airline, origin, destination, date,
     al   = airline.lower()
 
     if 'el al' in al or 'elal' in al:
-        fmt = dep.strftime('%d/%m/%Y')
-        url = (f"https://www.elal.com/en/Flights-And-Destinations/Book-Flights/Pages/default.aspx"
-               f"#outboundDate={fmt}&origin={o}&destination={d}&adults=1"
-               f"&tripType={'2' if trip_type == 'RT' else '1'}")
-        if trip_type == 'RT' and return_date:
-            ret = datetime.strptime(return_date, '%Y-%m-%d').strftime('%d/%m/%Y')
-            url += f"&inboundDate={ret}"
-        return url
+        ret_param = f"&returnDate={return_date}" if trip_type == 'RT' and return_date else ''
+        return (f"https://www.elal.com/en/Book-A-Flight/"
+                f"?origin={o}&destination={d}&departureDate={date}"
+                f"&tripType={'RT' if trip_type == 'RT' else 'OW'}&adults=1{ret_param}")
 
     if 'iberia' in al:
         url = (f"https://www.iberia.com/us/flights/search/"

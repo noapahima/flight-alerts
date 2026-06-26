@@ -10,7 +10,7 @@ _SOURCE_COLORS = {
 }
 
 
-def _source_rows_html(all_results, max_price, currency):
+def _source_rows_html(all_results, max_price, currency, gf_search_url=''):
     if not all_results:
         return ''
     html = ''
@@ -24,18 +24,36 @@ def _source_rows_html(all_results, max_price, currency):
             badge = ('<span style="background:#F0FDF4;color:#10B981;font-size:10px;'
                      'font-weight:bold;padding:2px 7px;border-radius:4px;margin-left:6px;">'
                      '&#10003; below threshold</span>') if below else ''
+
+            # Google Flights direct link (tfs= URL or fallback search)
+            is_gf_booking = 'tfs=' in url
+            gf_btn = ''
+            if is_gf_booking:
+                gf_btn = (f'<a href="{url}" style="font-size:11px;color:#4285F4;'
+                          f'text-decoration:none;margin-left:8px;'
+                          f'background:#EFF6FF;padding:3px 8px;border-radius:5px;">'
+                          f'&#128269; Google Flights</a>')
+            elif gf_search_url:
+                gf_btn = (f'<a href="{gf_search_url}" style="font-size:11px;color:#4285F4;'
+                          f'text-decoration:none;margin-left:8px;'
+                          f'background:#EFF6FF;padding:3px 8px;border-radius:5px;">'
+                          f'&#128269; Google Flights</a>')
+
+            # Main row links to airline site (or tfs= if that's all we have)
+            book_url = url if not is_gf_booking else url  # keep tfs= as primary if captured
             html += (
-                f'<a href="{url}" style="display:flex;align-items:center;'
-                f'justify-content:space-between;text-decoration:none;padding:11px 14px;'
-                f'border-radius:10px;margin-bottom:7px;background:#F8FAFF;'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'padding:11px 14px;border-radius:10px;margin-bottom:7px;background:#F8FAFF;'
                 f'border:1.5px solid {border};">'
-                f'<span style="display:flex;align-items:center;gap:8px;">'
+                f'<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
                 f'<span style="width:10px;height:10px;border-radius:50%;'
-                f'background:{color};display:inline-block;"></span>'
+                f'background:{color};display:inline-block;flex-shrink:0;"></span>'
                 f'<span style="font-size:13px;font-weight:bold;color:#0F172A;">{name}</span>'
-                f'{badge}</span>'
-                f'<span style="font-size:15px;font-weight:bold;color:{price_color};">'
-                f'{currency} {p:.0f} &rarr;</span></a>'
+                f'{badge}{gf_btn}</span>'
+                f'<a href="{book_url}" style="font-size:14px;font-weight:bold;'
+                f'color:{price_color};text-decoration:none;white-space:nowrap;margin-left:8px;">'
+                f'{currency} {p:.0f} &rarr;</a>'
+                f'</div>'
             )
     except Exception as e:
         html = f'<p style="color:#EF4444;">Error building rows: {e}</p>'
@@ -73,7 +91,7 @@ def send_price_alert(api_key, to_email, alert, price, currency,
     book_color = _SOURCE_COLORS.get(source, '#1E3A5F')
 
     # Build source rows separately so any error doesn't kill the whole email
-    source_rows = _source_rows_html(all_results or {}, alert['max_price'], currency)
+    source_rows = _source_rows_html(all_results or {}, alert['max_price'], currency, gf_url)
 
     html = (
         '<html><body style="font-family:Arial,sans-serif;background:#EEF2FF;padding:24px;margin:0;">'

@@ -587,7 +587,7 @@ class FlightWidget(QWidget):
         self.status_lbl = QLabel('● Ready')
         self.status_lbl.setObjectName('status_lbl')
         h.addWidget(self.status_lbl)
-        src = QLabel('Google · Skyscanner · Hulyo · Ryanair · Wizz · Iberia')
+        src = QLabel('Google · Skyscanner · Hulyo · El Al · Iberia')
         src.setStyleSheet('color:rgba(255,255,255,0.2);font-size:9px;background:transparent;')
         h.addStretch(); h.addWidget(src)
         return w

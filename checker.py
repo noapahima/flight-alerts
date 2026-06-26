@@ -195,12 +195,102 @@ def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
             browser.close()
 
 
+# ── El Al ────────────────────────────────────────────────────────────────────
+
+def _elal(origin, destination, date, return_date='', trip_type='OW'):
+    with sync_playwright() as p:
+        browser, page = _browser_ctx(p)
+        try:
+            d = datetime.strptime(date, '%Y-%m-%d')
+            url = (
+                f"https://www.elal.com/en/Flights-And-Destinations/Book-Flights/Pages/default.aspx"
+                f"#outboundDate={d.strftime('%d/%m/%Y')}"
+                f"&origin={origin}&destination={destination}&adults=1"
+                f"&tripType={'2' if trip_type == 'RT' else '1'}"
+            )
+            page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            _dismiss(page)
+            page.wait_for_timeout(8000)
+
+            final_url = page.url or url
+            body = page.inner_text('body')
+
+            flight_kws = ['flight', 'depart', 'arrive', 'nonstop', 'economy',
+                          'טיסה', 'המראה', 'נחיתה', 'מחיר', 'price', '$']
+            if sum(1 for kw in flight_kws if kw.lower() in body.lower()) < 2:
+                return None
+
+            prices = []
+            for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body):
+                v = int(m.group(1).replace(',', ''))
+                if 100 < v < 15000:
+                    prices.append(v)
+            for m in re.finditer(r'₪\s*(\d{3,5}(?:,\d{3})*)', body):
+                v = int(int(m.group(1).replace(',', '')) / 3.7)
+                if 100 < v < 15000:
+                    prices.append(v)
+
+            prices = sorted(set(prices))
+            return (min(prices), final_url) if prices else None
+        finally:
+            browser.close()
+
+
+# ── Iberia ────────────────────────────────────────────────────────────────────
+
+def _iberia(origin, destination, date, return_date='', trip_type='OW'):
+    with sync_playwright() as p:
+        browser, page = _browser_ctx(p)
+        try:
+            url = (
+                f"https://www.iberia.com/us/flights/search/"
+                f"?originAirport={origin}&destinationAirport={destination}"
+                f"&departDate={date}&adults=1&cabin=Y"
+                f"&tripType={'RT' if trip_type == 'RT' else 'OW'}"
+            )
+            if trip_type == 'RT' and return_date:
+                url += f"&returnDate={return_date}"
+
+            page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            _dismiss(page)
+            try:
+                page.wait_for_selector('[class*="price"], [class*="Price"], [data-price]',
+                                       timeout=12000)
+            except PWTimeout:
+                page.wait_for_timeout(8000)
+
+            final_url = page.url or url
+            body = page.inner_text('body')
+
+            flight_kws = ['flight', 'nonstop', 'economy', 'depart', 'arrive',
+                          'iberia', 'madrid', 'tel aviv']
+            if sum(1 for kw in flight_kws if kw.lower() in body.lower()) < 2:
+                return None
+
+            prices = []
+            for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body):
+                v = int(m.group(1).replace(',', ''))
+                if 100 < v < 15000:
+                    prices.append(v)
+            for m in re.finditer(r'€\s*(\d{2,4}(?:,\d{3})*)', body):
+                v = int(int(m.group(1).replace(',', '')) * 1.08)
+                if 100 < v < 15000:
+                    prices.append(v)
+
+            prices = sorted(set(prices))
+            return (min(prices), final_url) if prices else None
+        finally:
+            browser.close()
+
+
 # ── Main entry ───────────────────────────────────────────────────────────────
 
 SOURCES = {
     'Google Flights': _google_flights,
     'Skyscanner':     _skyscanner,
     'Hulyo':          _hulyo,
+    'El Al':          _elal,
+    'Iberia':         _iberia,
 }
 
 

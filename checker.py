@@ -1,15 +1,15 @@
 """
-Reliable flight price checker using Playwright.
-Sources: Google Flights, Skyscanner, Hulyo — run in parallel.
-Returns min price + direct URL to those exact results.
+Flight price checker — intercepts Google Flights network responses for accurate prices.
+Falls back to DOM extraction if interception fails.
 """
+import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 
-def _ctx(p):
+def _browser_ctx(p):
     browser = p.chromium.launch(headless=True)
     ctx = browser.new_context(
         user_agent=(
@@ -18,14 +18,13 @@ def _ctx(p):
         ),
         locale='en-US',
         viewport={'width': 1280, 'height': 900},
-        timezone_id='America/New_York',
     )
     return browser, ctx.new_page()
 
 
 def _dismiss(page):
-    for sel in ['button:has-text("Accept all")', 'button:has-text("I Accept")',
-                'button:has-text("Accept")', '[aria-label*="ccept"]']:
+    for sel in ['button:has-text("Accept all")', 'button:has-text("Accept")',
+                '[aria-label*="ccept"]']:
         try:
             page.locator(sel).first.click(timeout=1500)
             return
@@ -33,36 +32,33 @@ def _dismiss(page):
             pass
 
 
-FLIGHT_KEYWORDS = [
-    'flight', 'depart', 'arrive', 'airline', 'nonstop', 'layover', 'economy',
-    'טיסה', 'יעד', 'המראה', 'נחיתה', 'direct', 'round trip', 'one way',
-    'per person', 'pp', 'total price', 'fare', 'מחיר', 'book',
-]
-
-def _has_flight_context(text):
-    t = text.lower()
-    return sum(1 for kw in FLIGHT_KEYWORDS if kw in t) >= 3
-
-def _parse_usd(text):
-    if not _has_flight_context(text):
-        return []
-    hits = re.findall(r'\$\s*(\d{1,4}(?:,\d{3})*)', text)
-    return [int(h.replace(',', '')) for h in hits if 100 < int(h.replace(',', '')) < 15000]
-
-
-def _parse_ils(text):
-    if not _has_flight_context(text):
-        return []
-    hits = re.findall(r'₪\s*(\d{3,5}(?:,\d{3})*)', text)
-    return [int(int(h.replace(',', '')) / 3.7) for h in hits
-            if 370 < int(h.replace(',', '')) < 60000]
-
-
-# ── Google Flights ──────────────────────────────────────────────────────────
+# ── Google Flights (primary) ─────────────────────────────────────────────────
 
 def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
     with sync_playwright() as p:
-        browser, page = _ctx(p)
+        browser, page = _browser_ctx(p)
+        captured_prices = []
+
+        def handle_response(response):
+            url = response.url
+            if 'travel/flights' not in url and 'batchexecute' not in url:
+                return
+            try:
+                body = response.text()
+                # Google Flights returns prices in patterns like "1,234" or "234" after currency
+                for m in re.finditer(r'"USD","(\d{2,4})"', body):
+                    v = int(m.group(1))
+                    if 100 < v < 15000:
+                        captured_prices.append(v)
+                for m in re.finditer(r'\$(\d{2,4}(?:,\d{3})*)', body):
+                    v = int(m.group(1).replace(',', ''))
+                    if 100 < v < 15000:
+                        captured_prices.append(v)
+            except Exception:
+                pass
+
+        page.on('response', handle_response)
+
         try:
             tt  = 'round trip' if trip_type == 'RT' and return_date else 'one way'
             q   = f"{tt} flights from {origin} to {destination} on {date}"
@@ -73,199 +69,145 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
             page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
             _dismiss(page)
 
-            loaded = False
-            for sel in ['div[role="listitem"]', 'span[data-gs]', '[aria-label*="$"]']:
+            # Wait for flight cards to appear
+            found_cards = False
+            for sel in ['div[role="listitem"]', '[data-gs]', '[aria-label*="$"]',
+                        'div[jsname]']:
                 try:
-                    page.wait_for_selector(sel, timeout=9000)
-                    loaded = True
+                    page.wait_for_selector(sel, timeout=8000)
+                    found_cards = True
                     break
                 except PWTimeout:
                     pass
-            if not loaded:
-                page.wait_for_timeout(5000)
 
-            # Capture the live URL after results load (includes encoded flight params)
-            final_url = page.url or search_url
+            if not found_cards:
+                page.wait_for_timeout(6000)
 
-            prices = []
-            for el in page.locator('[aria-label]').all()[:60]:
+            # Extract prices from aria-labels on flight cards (most reliable)
+            aria_prices = []
+            for el in page.locator('[aria-label]').all()[:80]:
                 try:
                     lbl = el.get_attribute('aria-label') or ''
-                    prices.extend(_parse_usd(lbl))
+                    for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', lbl):
+                        v = int(m.group(1).replace(',', ''))
+                        if 100 < v < 15000:
+                            aria_prices.append(v)
                 except Exception:
                     pass
-            prices.extend(_parse_usd(page.inner_text('body')))
+
+            all_prices = sorted(set(aria_prices + captured_prices))
+            if not all_prices:
+                # Last resort: DOM text with strict validation
+                body_text = page.inner_text('body')
+                flight_indicators = ['nonstop', 'stop', 'hr ', 'min', 'economy',
+                                     'depart', 'arrive']
+                if sum(1 for kw in flight_indicators if kw in body_text.lower()) >= 3:
+                    for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body_text):
+                        v = int(m.group(1).replace(',', ''))
+                        if 100 < v < 15000:
+                            all_prices.append(v)
+
+            final_url = page.url or search_url
+            all_prices = sorted(set(all_prices))
+            return (min(all_prices), final_url) if all_prices else None
+        finally:
+            browser.close()
+
+
+# ── Skyscanner ───────────────────────────────────────────────────────────────
+
+def _skyscanner(origin, destination, date, return_date='', trip_type='OW'):
+    with sync_playwright() as p:
+        browser, page = _browser_ctx(p)
+        try:
+            dep = datetime.strptime(date, '%Y-%m-%d').strftime('%y%m%d')
+            if trip_type == 'RT' and return_date:
+                ret = datetime.strptime(return_date, '%Y-%m-%d').strftime('%y%m%d')
+                url = (f"https://www.skyscanner.com/transport/flights/"
+                       f"{origin.lower()}/{destination.lower()}/{dep}/{ret}/"
+                       f"?adults=1&currency=USD")
+            else:
+                url = (f"https://www.skyscanner.com/transport/flights/"
+                       f"{origin.lower()}/{destination.lower()}/{dep}/"
+                       f"?adults=1&currency=USD")
+
+            page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            _dismiss(page)
+            try:
+                page.wait_for_selector('[data-testid*="price"], [class*="Price"]',
+                                       timeout=10000)
+            except PWTimeout:
+                page.wait_for_timeout(6000)
+
+            final_url = page.url or url
+            body = page.inner_text('body')
+            # Only extract if page shows flight results
+            if sum(1 for kw in ['nonstop', 'stop', 'economy', 'depart', 'arrive', 'hr']
+                   if kw in body.lower()) >= 3:
+                prices = [int(m.group(1).replace(',', ''))
+                          for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body)
+                          if 100 < int(m.group(1).replace(',', '')) < 15000]
+                prices = sorted(set(prices))
+                return (min(prices), final_url) if prices else None
+            return None
+        finally:
+            browser.close()
+
+
+# ── Hulyo ────────────────────────────────────────────────────────────────────
+
+def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
+    with sync_playwright() as p:
+        browser, page = _browser_ctx(p)
+        try:
+            url = (f"https://www.hulyo.co.il/flights"
+                   f"?origin={origin}&destination={destination}"
+                   f"&date={date}&adults=1"
+                   f"&tripType={'RT' if trip_type == 'RT' else 'OW'}")
+            if trip_type == 'RT' and return_date:
+                url += f"&returnDate={return_date}"
+
+            page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            _dismiss(page)
+            page.wait_for_timeout(7000)
+
+            final_url = page.url or url
+            body = page.inner_text('body')
+
+            flight_kws = ['טיסה', 'המראה', 'נחיתה', 'ישיר', 'עצירה',
+                          'flight', 'depart', 'nonstop', 'economy']
+            if sum(1 for kw in flight_kws if kw in body.lower()) < 2:
+                return None  # No flight results
+
+            prices = []
+            for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body):
+                v = int(m.group(1).replace(',', ''))
+                if 100 < v < 15000:
+                    prices.append(v)
+            for m in re.finditer(r'₪\s*(\d{3,5}(?:,\d{3})*)', body):
+                v = int(int(m.group(1).replace(',', '')) / 3.7)
+                if 100 < v < 15000:
+                    prices.append(v)
+
             prices = sorted(set(prices))
             return (min(prices), final_url) if prices else None
         finally:
             browser.close()
 
 
-# ── Skyscanner ──────────────────────────────────────────────────────────────
-
-def _skyscanner(origin, destination, date, return_date='', trip_type='OW'):
-    with sync_playwright() as p:
-        browser, page = _ctx(p)
-        try:
-            dep = datetime.strptime(date, '%Y-%m-%d').strftime('%y%m%d')
-            if trip_type == 'RT' and return_date:
-                ret = datetime.strptime(return_date, '%Y-%m-%d').strftime('%y%m%d')
-                search_url = (f"https://www.skyscanner.com/transport/flights/"
-                              f"{origin.lower()}/{destination.lower()}/{dep}/{ret}/"
-                              f"?adults=1&currency=USD")
-            else:
-                search_url = (f"https://www.skyscanner.com/transport/flights/"
-                              f"{origin.lower()}/{destination.lower()}/{dep}/"
-                              f"?adults=1&currency=USD")
-
-            page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
-            _dismiss(page)
-            try:
-                page.wait_for_selector('[data-testid*="price"], [class*="Price"]', timeout=10000)
-            except PWTimeout:
-                page.wait_for_timeout(6000)
-
-            final_url = page.url or search_url
-            prices = _parse_usd(page.inner_text('body'))
-            return (min(prices), final_url) if prices else None
-        finally:
-            browser.close()
-
-
-# ── Hulyo ───────────────────────────────────────────────────────────────────
-
-def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
-    with sync_playwright() as p:
-        browser, page = _ctx(p)
-        try:
-            search_url = (f"https://www.hulyo.co.il/flights"
-                          f"?origin={origin}&destination={destination}"
-                          f"&date={date}&adults=1"
-                          f"&tripType={'RT' if trip_type == 'RT' else 'OW'}")
-            if trip_type == 'RT' and return_date:
-                search_url += f"&returnDate={return_date}"
-
-            page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
-            _dismiss(page)
-            page.wait_for_timeout(7000)
-
-            final_url = page.url or search_url
-            text   = page.inner_text('body')
-            prices = _parse_usd(text) + _parse_ils(text)
-            return (min(prices), final_url) if prices else None
-        finally:
-            browser.close()
-
-
-# ── Ryanair ─────────────────────────────────────────────────────────────────
-
-def _ryanair(origin, destination, date, return_date='', trip_type='OW'):
-    with sync_playwright() as p:
-        browser, page = _ctx(p)
-        try:
-            d = datetime.strptime(date, '%Y-%m-%d')
-            search_url = (
-                f"https://www.ryanair.com/gb/en/trip/flights/select"
-                f"?adults=1&teens=0&children=0&infants=0"
-                f"&dateOut={date}&dateIn={return_date if trip_type=='RT' and return_date else ''}"
-                f"&isConnectedFlight=false&isReturn={'true' if trip_type=='RT' else 'false'}"
-                f"&discount=0&originIata={origin}&destinationIata={destination}"
-                f"&tpAdults=1&tpTeens=0&tpChildren=0&tpInfants=0"
-                f"&tpStartDate={date}&tpEndDate={return_date or date}"
-                f"&tpDiscount=0&tpPromoCode=&tpOriginIata={origin}&tpDestinationIata={destination}"
-            )
-            page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
-            _dismiss(page)
-            try:
-                page.wait_for_selector('[data-ref*="price"], [class*="price"]', timeout=10000)
-            except PWTimeout:
-                page.wait_for_timeout(6000)
-            final_url = page.url or search_url
-            prices = _parse_usd(page.inner_text('body'))
-            # Ryanair shows EUR — rough convert
-            eur_hits = re.findall(r'€\s*(\d{1,4}(?:,\d{3})*)', page.inner_text('body'))
-            prices += [int(int(h.replace(',', '')) * 1.08) for h in eur_hits
-                       if 10 < int(h.replace(',', '')) < 10000]
-            return (min(prices), final_url) if prices else None
-        finally:
-            browser.close()
-
-
-# ── Wizzair ──────────────────────────────────────────────────────────────────
-
-def _wizzair(origin, destination, date, return_date='', trip_type='OW'):
-    with sync_playwright() as p:
-        browser, page = _ctx(p)
-        try:
-            search_url = (
-                f"https://wizzair.com/en-gb/flights/timetable/{origin}/{destination}/{date}"
-            )
-            page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
-            _dismiss(page)
-            try:
-                page.wait_for_selector('[class*="price"], [class*="fare"]', timeout=10000)
-            except PWTimeout:
-                page.wait_for_timeout(6000)
-            final_url = page.url or search_url
-            text   = page.inner_text('body')
-            prices = _parse_usd(text)
-            eur_hits = re.findall(r'€\s*(\d{1,4}(?:,\d{3})*)', text)
-            prices += [int(int(h.replace(',', '')) * 1.08) for h in eur_hits
-                       if 10 < int(h.replace(',', '')) < 10000]
-            return (min(prices), final_url) if prices else None
-        finally:
-            browser.close()
-
-
-# ── Iberia ───────────────────────────────────────────────────────────────────
-
-def _iberia(origin, destination, date, return_date='', trip_type='OW'):
-    with sync_playwright() as p:
-        browser, page = _ctx(p)
-        try:
-            if trip_type == 'RT' and return_date:
-                search_url = (
-                    f"https://www.iberia.com/us/flights/search/"
-                    f"?originAirport={origin}&destinationAirport={destination}"
-                    f"&departDate={date}&returnDate={return_date}&adults=1&cabin=Y&tripType=RT"
-                )
-            else:
-                search_url = (
-                    f"https://www.iberia.com/us/flights/search/"
-                    f"?originAirport={origin}&destinationAirport={destination}"
-                    f"&departDate={date}&adults=1&cabin=Y&tripType=OW"
-                )
-            page.goto(search_url, wait_until='domcontentloaded', timeout=30000)
-            _dismiss(page)
-            try:
-                page.wait_for_selector('[class*="price"], [data-price]', timeout=10000)
-            except PWTimeout:
-                page.wait_for_timeout(6000)
-            final_url = page.url or search_url
-            prices = _parse_usd(page.inner_text('body'))
-            eur_hits = re.findall(r'€\s*(\d{1,4}(?:,\d{3})*)', page.inner_text('body'))
-            prices += [int(int(h.replace(',', '')) * 1.08) for h in eur_hits
-                       if 10 < int(h.replace(',', '')) < 10000]
-            return (min(prices), final_url) if prices else None
-        finally:
-            browser.close()
-
-
-# ── Main entry ──────────────────────────────────────────────────────────────
+# ── Main entry ───────────────────────────────────────────────────────────────
 
 SOURCES = {
     'Google Flights': _google_flights,
     'Skyscanner':     _skyscanner,
     'Hulyo':          _hulyo,
-    'Ryanair':        _ryanair,
-    'Wizzair':        _wizzair,
-    'Iberia':         _iberia,
 }
 
 
 def get_cheapest_price(origin, destination, date,
-                       return_date='', trip_type='OW', include_luggage=False):
-    results = {}   # name -> (price, url)
+                       return_date='', trip_type='OW', include_luggage=False,
+                       amadeus_key='', amadeus_secret=''):
+    results = {}  # name -> (price, url)
 
     def run(name, fn):
         try:
@@ -273,7 +215,9 @@ def get_cheapest_price(origin, destination, date,
             if res:
                 price, url = res
                 results[name] = (price, url)
-                print(f'  {name}: ${price}  →  {url[:60]}')
+                print(f'  {name}: ${price}')
+            else:
+                print(f'  {name}: no results')
         except Exception as e:
             print(f'  {name} error: {e}')
 
@@ -290,8 +234,9 @@ def get_cheapest_price(origin, destination, date,
     return {
         'min_price': price,
         'url':       url,
+        'label':     '',
         'currency':  'USD',
         'source':    best,
         'timestamp': datetime.now().strftime('%H:%M'),
-        'all':       results,   # {name: (price, url)}
+        'all':       results,
     }

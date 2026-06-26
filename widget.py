@@ -453,7 +453,8 @@ class FlightWidget(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMaximumHeight(240)
+        scroll.setMinimumHeight(280)
+        scroll.setMaximumHeight(600)
         self._cards_w = QWidget()
         self._cards_w.setStyleSheet('background:transparent;')
         self._cards_lay = QVBoxLayout(self._cards_w)

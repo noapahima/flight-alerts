@@ -10,10 +10,37 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 
 
+_AIRPORT_NAMES = {
+    'TLV': ['tlv', 'tel aviv', 'תל אביב', 'בן גוריון', 'ben gurion'],
+    'MAD': ['mad', 'madrid', 'מדריד', 'barajas'],
+    'LHR': ['lhr', 'london', 'heathrow', 'לונדון'],
+    'CDG': ['cdg', 'paris', 'פריז', 'charles de gaulle'],
+    'FCO': ['fco', 'rome', 'רומא', 'fiumicino'],
+    'BCN': ['bcn', 'barcelona', 'ברצלונה'],
+    'JFK': ['jfk', 'new york', 'ניו יורק', 'kennedy'],
+    'BKK': ['bkk', 'bangkok', 'בנגקוק', 'suvarnabhumi'],
+    'DXB': ['dxb', 'dubai', 'דובאי'],
+    'ATH': ['ath', 'athens', 'אתונה'],
+    'NYC': ['nyc', 'new york', 'ניו יורק'],
+    'LAX': ['lax', 'los angeles', 'לוס אנג׳לס'],
+    'MIA': ['mia', 'miami', 'מיאמי'],
+    'ORD': ['ord', 'chicago', 'שיקגו'],
+    'AMS': ['ams', 'amsterdam', 'אמסטרדם'],
+    'FRA': ['fra', 'frankfurt', 'פרנקפורט'],
+    'IST': ['ist', 'istanbul', 'איסטנבול'],
+    'CAI': ['cai', 'cairo', 'קהיר'],
+    'BEY': ['bey', 'beirut', 'ביירות'],
+}
+
+
 def _page_has_route(body, origin, destination):
-    """Check IATA codes appear on page — works in any language."""
-    b = body.upper()
-    return origin.upper() in b and destination.upper() in b
+    """Check that both origin and destination appear on page (IATA code or city name)."""
+    b = body.lower()
+    o_terms = _AIRPORT_NAMES.get(origin.upper(), [origin.lower()])
+    d_terms = _AIRPORT_NAMES.get(destination.upper(), [destination.lower()])
+    has_origin = any(t in b for t in o_terms)
+    has_dest   = any(t in b for t in d_terms)
+    return has_origin and has_dest
 
 
 def _browser_ctx(p):

@@ -33,15 +33,29 @@ def _dismiss(page):
             pass
 
 
+FLIGHT_KEYWORDS = [
+    'flight', 'depart', 'arrive', 'airline', 'nonstop', 'layover', 'economy',
+    'טיסה', 'יעד', 'המראה', 'נחיתה', 'direct', 'round trip', 'one way',
+    'per person', 'pp', 'total price', 'fare', 'מחיר', 'book',
+]
+
+def _has_flight_context(text):
+    t = text.lower()
+    return sum(1 for kw in FLIGHT_KEYWORDS if kw in t) >= 3
+
 def _parse_usd(text):
+    if not _has_flight_context(text):
+        return []
     hits = re.findall(r'\$\s*(\d{1,4}(?:,\d{3})*)', text)
-    return [int(h.replace(',', '')) for h in hits if 30 < int(h.replace(',', '')) < 15000]
+    return [int(h.replace(',', '')) for h in hits if 100 < int(h.replace(',', '')) < 15000]
 
 
 def _parse_ils(text):
+    if not _has_flight_context(text):
+        return []
     hits = re.findall(r'₪\s*(\d{3,5}(?:,\d{3})*)', text)
     return [int(int(h.replace(',', '')) / 3.7) for h in hits
-            if 100 < int(h.replace(',', '')) < 60000]
+            if 370 < int(h.replace(',', '')) < 60000]
 
 
 # ── Google Flights ──────────────────────────────────────────────────────────

@@ -367,7 +367,7 @@ class SettingsDialog(QDialog):
 # ── Signals ────────────────────────────────────────────────────────────────
 
 class Signals(QObject):
-    price_result = pyqtSignal(str, float, str, str, str)  # id, price, currency, source, url
+    price_result = pyqtSignal(str, float, str, str, str, object)  # id, price, currency, source, url, all_results
     check_error  = pyqtSignal(str, str)
     status       = pyqtSignal(str)
 
@@ -650,7 +650,7 @@ class FlightWidget(QWidget):
 
     # ── Signals ────────────────────────────────────────────────────────────
 
-    def _on_price(self, alert_id, price, currency, source, direct_url):
+    def _on_price(self, alert_id, price, currency, source, direct_url, all_results):
         card  = self.cards.get(alert_id)
         alert = next((a for a in self.config['alerts'] if a['id'] == alert_id), None)
         if not card or not alert:
@@ -661,7 +661,7 @@ class FlightWidget(QWidget):
             try:
                 notifier.send_price_alert(
                     self.config.get('resend_api_key', ''),
-                    alert['email'], alert, price, currency, source, direct_url)
+                    alert['email'], alert, price, currency, source, direct_url, all_results)
             except Exception as e:
                 self.sig.status.emit(f'⚠ Mail error: {str(e)[:40]}')
 
@@ -695,7 +695,7 @@ class FlightWidget(QWidget):
                 self.sig.price_result.emit(
                     alert['id'], result['min_price'],
                     result['currency'], result.get('source', ''),
-                    result.get('url', ''))
+                    result.get('url', ''), result.get('all', {}))
         except Exception as e:
             self.sig.check_error.emit(alert['id'], str(e))
         self.sig.status.emit(f'✓  Updated {datetime.now().strftime("%H:%M")}')
@@ -716,7 +716,7 @@ class FlightWidget(QWidget):
                     self.sig.price_result.emit(
                         a['id'], result['min_price'],
                         result['currency'], result.get('source', ''),
-                        result.get('url', ''))
+                        result.get('url', ''), result.get('all', {}))
             except Exception as e:
                 self.sig.check_error.emit(a['id'], str(e))
         self.sig.status.emit(f'✓  Updated {datetime.now().strftime("%H:%M")}')

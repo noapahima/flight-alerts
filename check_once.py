@@ -40,7 +40,8 @@ def main():
                     notifier.send_price_alert(
                         api_key, alert['email'], alert,
                         price, result['currency'],
-                        result['source'], result.get('url', ''))
+                        result['source'], result.get('url', ''),
+                        result.get('all', {}))
                     print('  Email sent!')
                 else:
                     print(f"  Above threshold (${alert['max_price']}) — no alert")

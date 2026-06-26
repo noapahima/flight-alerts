@@ -279,5 +279,5 @@ def get_cheapest_price(origin, destination, date,
         'currency':  'USD',
         'source':    best,
         'timestamp': datetime.now().strftime('%H:%M'),
-        'all':       {n: results[n][0] for n in results},
+        'all':       results,   # {name: (price, url)}
     }

@@ -1,7 +1,45 @@
 import resend
 
 
-def send_price_alert(api_key, to_email, alert, price, currency, source='', direct_url=''):
+_SOURCE_COLORS = {
+    'Google Flights': '#4285F4',
+    'Skyscanner':     '#0770E3',
+    'Hulyo':          '#E65100',
+    'Ryanair':        '#073590',
+    'Wizzair':        '#C6007E',
+    'Iberia':         '#CC0000',
+}
+
+
+def _build_source_rows(all_results, max_price, currency):
+    if not all_results:
+        return ''
+    rows = ''
+    for name, val in sorted(all_results.items(), key=lambda x: x[1][0]):
+        p, url = val
+        below  = p <= max_price
+        color  = _SOURCE_COLORS.get(name, '#475569')
+        badge  = (f'<span style="background:#F0FDF4;color:#10B981;font-size:10px;'
+                  f'font-weight:bold;padding:2px 7px;border-radius:4px;'
+                  f'margin-left:6px;">✓ below threshold</span>') if below else ''
+        rows += f"""
+        <a href="{url}" style="display:flex;align-items:center;justify-content:space-between;
+           text-decoration:none;padding:11px 14px;border-radius:10px;margin-bottom:7px;
+           background:#F8FAFF;border:1.5px solid {'#BFDBFE' if below else '#E8EEF6'};">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span style="width:10px;height:10px;border-radius:50%;
+                         background:{color};display:inline-block;"></span>
+            <span style="font-size:13px;font-weight:bold;color:#0F172A;">{name}</span>
+            {badge}
+          </span>
+          <span style="font-size:15px;font-weight:bold;color:{'#10B981' if below else '#475569'};">
+            {currency} {p:.0f} →
+          </span>
+        </a>"""
+    return rows
+
+
+def send_price_alert(api_key, to_email, alert, price, currency, source='', direct_url='', all_results=None):
     o, d = alert['origin'], alert['destination']
     tt   = '↔ Round trip' if alert.get('trip_type') == 'RT' else '→ One-way'
     bag  = '✅ Includes checked bag (23 kg)' if alert.get('include_luggage') else '⚠️ Check baggage policy'
@@ -95,34 +133,11 @@ def send_price_alert(api_key, to_email, alert, price, currency, source='', direc
     </table>
   </div>
 
-  <!-- CTA buttons -->
+  <!-- All sources -->
   <div style="padding:0 28px 24px;">
-    <a href="{book_url}"
-       style="display:block;background:{book_color};color:white;padding:14px;
-              text-decoration:none;border-radius:10px;font-size:14px;font-weight:bold;
-              text-align:center;margin-bottom:10px;letter-spacing:0.5px;">
-      🎯  Book on {src} — {currency} {price:.0f}
-    </a>
-    <div style="display:flex;gap:8px;">
-      <a href="{gf_url}"
-         style="flex:1;background:#F0F7FF;color:#1E40AF;padding:10px;
-                text-decoration:none;border-radius:8px;font-size:12px;font-weight:bold;
-                text-align:center;border:1px solid #BFDBFE;">
-        Google Flights
-      </a>
-      <a href="{sk_url}"
-         style="flex:1;background:#F0F7FF;color:#1E40AF;padding:10px;
-                text-decoration:none;border-radius:8px;font-size:12px;font-weight:bold;
-                text-align:center;border:1px solid #BFDBFE;">
-        Skyscanner
-      </a>
-      <a href="{hulyo_url}"
-         style="flex:1;background:#FFF7ED;color:#C2410C;padding:10px;
-                text-decoration:none;border-radius:8px;font-size:12px;font-weight:bold;
-                text-align:center;border:1px solid #FED7AA;">
-        חוליו
-      </a>
-    </div>
+    <div style="color:#94A3B8;font-size:9px;font-weight:bold;letter-spacing:2px;
+                text-transform:uppercase;margin-bottom:10px;">ALL PRICES FOUND</div>
+    {_build_source_rows(all_results or {}, alert['max_price'], currency)}
   </div>
 
   <!-- Footer -->

@@ -9,6 +9,29 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 
+AIRPORT_CITIES = {
+    'TLV': ['tel aviv', 'tlv', 'ben gurion', 'ישראל', 'תל אביב'],
+    'MAD': ['madrid', 'mad', 'barajas', 'מדריד'],
+    'LHR': ['london', 'heathrow', 'lhr'],
+    'CDG': ['paris', 'charles de gaulle', 'cdg'],
+    'FCO': ['rome', 'fiumicino', 'fco'],
+    'BCN': ['barcelona', 'bcn'],
+    'JFK': ['new york', 'jfk', 'kennedy'],
+    'BKK': ['bangkok', 'bkk', 'suvarnabhumi'],
+    'DXB': ['dubai', 'dxb'],
+    'ATH': ['athens', 'ath'],
+}
+
+
+def _page_has_route(body_lower, origin, destination):
+    """Make sure the page actually shows results for the requested route."""
+    o_terms = AIRPORT_CITIES.get(origin.upper(), [origin.lower()])
+    d_terms = AIRPORT_CITIES.get(destination.upper(), [destination.lower()])
+    has_origin = any(t in body_lower for t in o_terms)
+    has_dest   = any(t in body_lower for t in d_terms)
+    return has_origin and has_dest
+
+
 def _browser_ctx(p):
     browser = p.chromium.launch(headless=True)
     ctx = browser.new_context(
@@ -139,11 +162,16 @@ def _skyscanner(origin, destination, date, return_date='', trip_type='OW'):
             except PWTimeout:
                 page.wait_for_timeout(6000)
 
-            final_url = page.url or url
-            body = page.inner_text('body')
-            # Only extract if page shows flight results
+            final_url  = page.url or url
+            body       = page.inner_text('body')
+            body_lower = body.lower()
+
+            if not _page_has_route(body_lower, origin, destination):
+                print(f'  Skyscanner: route {origin}→{destination} not confirmed on page')
+                return None
+
             if sum(1 for kw in ['nonstop', 'stop', 'economy', 'depart', 'arrive', 'hr']
-                   if kw in body.lower()) >= 3:
+                   if kw in body_lower) >= 3:
                 prices = [int(m.group(1).replace(',', ''))
                           for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body)
                           if 100 < int(m.group(1).replace(',', '')) < 15000]
@@ -171,13 +199,18 @@ def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
             _dismiss(page)
             page.wait_for_timeout(7000)
 
-            final_url = page.url or url
-            body = page.inner_text('body')
+            final_url  = page.url or url
+            body       = page.inner_text('body')
+            body_lower = body.lower()
+
+            if not _page_has_route(body_lower, origin, destination):
+                print(f'  Hulyo: route {origin}→{destination} not confirmed on page')
+                return None
 
             flight_kws = ['טיסה', 'המראה', 'נחיתה', 'ישיר', 'עצירה',
                           'flight', 'depart', 'nonstop', 'economy']
-            if sum(1 for kw in flight_kws if kw in body.lower()) < 2:
-                return None  # No flight results
+            if sum(1 for kw in flight_kws if kw in body_lower) < 2:
+                return None
 
             prices = []
             for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body):
@@ -212,12 +245,17 @@ def _elal(origin, destination, date, return_date='', trip_type='OW'):
             _dismiss(page)
             page.wait_for_timeout(8000)
 
-            final_url = page.url or url
-            body = page.inner_text('body')
+            final_url  = page.url or url
+            body       = page.inner_text('body')
+            body_lower = body.lower()
+
+            if not _page_has_route(body_lower, origin, destination):
+                print(f'  El Al: route {origin}→{destination} not confirmed on page')
+                return None
 
             flight_kws = ['flight', 'depart', 'arrive', 'nonstop', 'economy',
                           'טיסה', 'המראה', 'נחיתה', 'מחיר', 'price', '$']
-            if sum(1 for kw in flight_kws if kw.lower() in body.lower()) < 2:
+            if sum(1 for kw in flight_kws if kw.lower() in body_lower) < 2:
                 return None
 
             prices = []
@@ -259,12 +297,16 @@ def _iberia(origin, destination, date, return_date='', trip_type='OW'):
             except PWTimeout:
                 page.wait_for_timeout(8000)
 
-            final_url = page.url or url
-            body = page.inner_text('body')
+            final_url  = page.url or url
+            body       = page.inner_text('body')
+            body_lower = body.lower()
 
-            flight_kws = ['flight', 'nonstop', 'economy', 'depart', 'arrive',
-                          'iberia', 'madrid', 'tel aviv']
-            if sum(1 for kw in flight_kws if kw.lower() in body.lower()) < 2:
+            if not _page_has_route(body_lower, origin, destination):
+                print(f'  Iberia: route {origin}→{destination} not confirmed on page')
+                return None
+
+            flight_kws = ['flight', 'nonstop', 'economy', 'depart', 'arrive', 'iberia']
+            if sum(1 for kw in flight_kws if kw.lower() in body_lower) < 2:
                 return None
 
             prices = []

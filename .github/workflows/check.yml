@@ -1,0 +1,41 @@
+name: Flight Price Check
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # every hour — change to '0 */4 * * *' for every 4h
+  workflow_dispatch:        # lets you trigger manually from GitHub
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-v1
+
+      - name: Install dependencies
+        run: |
+          pip install resend playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Check flight prices
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: python check_once.py

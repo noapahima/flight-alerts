@@ -44,9 +44,14 @@ def main():
                         result.get('all', {}))
                     print('  Email sent!')
                 else:
-                    print(f"  Above threshold (${alert['max_price']}) — no alert")
+                    print(f"  Above threshold (${alert['max_price']}) — sending summary")
+                    notifier.send_no_deal_summary(
+                        api_key, alert['email'], alert,
+                        price, result['currency'], result.get('all', {}))
             else:
-                print('  No prices found')
+                print('  No prices found — sending summary')
+                notifier.send_no_deal_summary(
+                    api_key, alert['email'], alert, None, 'USD', {})
         except Exception as e:
             print(f'  Error: {e}')
 

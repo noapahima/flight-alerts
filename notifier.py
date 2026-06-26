@@ -139,3 +139,56 @@ def send_price_alert(api_key, to_email, alert, price, currency,
         'subject': f'✈ {o} → {d}  |  {currency} {price:.0f}  via {src}',
         'html':    html,
     })
+
+
+def send_no_deal_summary(api_key, to_email, alert, price, currency, all_results=None):
+    """Send a summary email when check finished but price is above threshold."""
+    o, d  = alert['origin'], alert['destination']
+    tt    = '↔ Round trip' if alert.get('trip_type') == 'RT' else '→ One-way'
+    ret   = f' → {alert["return_date"]}' if alert.get('return_date') else ''
+
+    source_rows = _source_rows_html(all_results or {}, alert['max_price'], currency)
+
+    if price:
+        body_html = (
+            f'<p style="font-size:15px;color:#0F172A;">Cheapest found: '
+            f'<b>{currency} {price:.0f}</b> — above your max of '
+            f'<b>{currency} {alert["max_price"]:.0f}</b>.</p>'
+            f'<p style="font-size:13px;color:#64748B;">We\'ll keep watching and alert you '
+            f'the moment a price drops below your threshold.</p>'
+            + (f'<div style="margin-top:16px;">{source_rows}</div>' if source_rows else '')
+        )
+        subject = f'🔍 {o} → {d}  |  checked — cheapest {currency} {price:.0f}'
+    else:
+        body_html = (
+            f'<p style="font-size:15px;color:#0F172A;">No flights found for this route on these dates.</p>'
+            f'<p style="font-size:13px;color:#64748B;">We\'ll keep checking every hour.</p>'
+        )
+        subject = f'🔍 {o} → {d}  |  no flights found'
+
+    html = (
+        '<html><body style="font-family:Arial,sans-serif;background:#EEF2FF;padding:24px;margin:0;">'
+        '<div style="background:white;border-radius:16px;padding:0;max-width:480px;'
+        'box-shadow:0 4px 24px rgba(0,0,0,0.10);overflow:hidden;">'
+        '<div style="background:linear-gradient(135deg,#1E293B 0%,#334155 100%);padding:20px 28px;">'
+        '<div style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:3px;'
+        'text-transform:uppercase;margin-bottom:4px;">Search Complete</div>'
+        f'<div style="color:white;font-size:22px;font-weight:bold;">{o} ✈ {d}</div>'
+        f'<div style="color:rgba(255,255,255,0.5);font-size:12px;">{tt} &nbsp;·&nbsp; '
+        f'{alert["date"]}{ret}</div>'
+        '</div>'
+        f'<div style="padding:24px 28px;">{body_html}</div>'
+        '<div style="background:#F8FAFC;padding:12px 28px;border-top:1px solid #F1F5F9;">'
+        '<p style="margin:0;font-size:10px;color:#CBD5E1;text-align:center;">'
+        'Prices are live snapshots — always verify before purchasing.</p>'
+        '</div>'
+        '</div></body></html>'
+    )
+
+    resend.api_key = api_key
+    resend.Emails.send({
+        'from':    'Flight Alerts <onboarding@resend.dev>',
+        'to':      [to_email],
+        'subject': subject,
+        'html':    html,
+    })

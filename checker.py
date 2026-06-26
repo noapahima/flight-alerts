@@ -355,8 +355,11 @@ def get_cheapest_price(origin, destination, date,
 
     with ThreadPoolExecutor(max_workers=len(SOURCES)) as ex:
         futs = {ex.submit(run, n, fn): n for n, fn in SOURCES.items()}
-        for f in as_completed(futs, timeout=90):
-            pass
+        try:
+            for f in as_completed(futs, timeout=360):  # 6 min — enough for all scrapers
+                pass
+        except Exception:
+            pass  # use whatever results came back in time
 
     if not results:
         return None

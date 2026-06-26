@@ -217,7 +217,7 @@ def _parse_gf_airlines(body_text, base_url, origin='', destination='',
             m = re.search(r'₪\s*([\d,]+)', line)
             if m:
                 price_ils = int(m.group(1).replace(',', ''))
-                price_usd = int(price_ils / 3.65)
+                price_usd = int(price_ils / 3.0)
                 break
             m = re.search(r'\$\s*(\d{2,4}(?:,\d{3})*)', line)
             if m:
@@ -436,7 +436,7 @@ def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
                 if 100 < v < 15000:
                     prices.append(v)
             for m in re.finditer(r'₪\s*(\d{3,5}(?:,\d{3})*)', body):
-                v = int(int(m.group(1).replace(',', '')) / 3.65)
+                v = int(int(m.group(1).replace(',', '')) / 3.0)
                 if 100 < v < 15000:
                     prices.append(v)
 
@@ -482,7 +482,7 @@ def _elal(origin, destination, date, return_date='', trip_type='OW'):
                 if 100 < v < 15000:
                     prices.append(v)
             for m in re.finditer(r'₪\s*(\d{3,5}(?:,\d{3})*)', body):
-                v = int(int(m.group(1).replace(',', '')) / 3.65)
+                v = int(int(m.group(1).replace(',', '')) / 3.0)
                 if 100 < v < 15000:
                     prices.append(v)
 

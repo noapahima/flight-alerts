@@ -129,17 +129,18 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
                 except Exception:
                     pass
 
+            # Also parse from DOM text — Google shows ₪ (ILS) prices for Israeli users
+            body_text = page.inner_text('body')
+            for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body_text):
+                v = int(m.group(1).replace(',', ''))
+                if 100 < v < 15000:
+                    aria_prices.append(v)
+            for m in re.finditer(r'₪\s*([\d,]+)', body_text):
+                v = int(m.group(1).replace(',', '')) // 4  # ₪ → USD approx
+                if 100 < v < 15000:
+                    aria_prices.append(v)
+
             all_prices = sorted(set(aria_prices + captured_prices))
-            if not all_prices:
-                # Last resort: DOM text with strict validation
-                body_text = page.inner_text('body')
-                flight_indicators = ['nonstop', 'stop', 'hr ', 'min', 'economy',
-                                     'depart', 'arrive']
-                if sum(1 for kw in flight_indicators if kw in body_text.lower()) >= 3:
-                    for m in re.finditer(r'\$\s*(\d{2,4}(?:,\d{3})*)', body_text):
-                        v = int(m.group(1).replace(',', ''))
-                        if 100 < v < 15000:
-                            all_prices.append(v)
 
             final_url = page.url or search_url
             all_prices = sorted(set(all_prices))

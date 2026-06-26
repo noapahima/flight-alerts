@@ -446,9 +446,10 @@ class SettingsDialog(QDialog):
 # ── Signals ────────────────────────────────────────────────────────────────
 
 class Signals(QObject):
-    price_result = pyqtSignal(str, float, str, str, str, object)  # id, price, currency, source, url, all_results
-    check_error  = pyqtSignal(str, str)
-    status       = pyqtSignal(str)
+    price_result  = pyqtSignal(str, float, str, str, str, object)
+    check_error   = pyqtSignal(str, str)
+    status        = pyqtSignal(str)
+    check_done    = pyqtSignal()  # fired after every completed check
 
 
 # ── Main widget ────────────────────────────────────────────────────────────
@@ -456,13 +457,15 @@ class Signals(QObject):
 class FlightWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.config    = storage.load()
-        self.cards     = {}
-        self._drag_pos = None
-        self.sig       = Signals()
+        self.config      = storage.load()
+        self.cards       = {}
+        self._drag_pos   = None
+        self._check_count = 0
+        self.sig         = Signals()
         self.sig.price_result.connect(self._on_price)
         self.sig.check_error.connect(self._on_error)
         self.sig.status.connect(self._on_status)
+        self.sig.check_done.connect(self._on_check_done)
         self._build_ui()
         self._start_bg()
 
@@ -541,6 +544,15 @@ class FlightWidget(QWidget):
         self._cards_lay.addStretch()
         scroll.setWidget(self._cards_w)
         lay.addWidget(scroll)
+
+        # ── Check counter ──
+        self.check_counter_lbl = QLabel('No checks yet')
+        self.check_counter_lbl.setStyleSheet(
+            'font-size:10px; color:#94A3B8; background:transparent;'
+            'padding:4px 2px; letter-spacing:0.5px;')
+        self.check_counter_lbl.setAlignment(Qt.AlignCenter)
+        lay.addWidget(self.check_counter_lbl)
+
         return w
 
     def _mk_form(self):
@@ -837,6 +849,7 @@ class FlightWidget(QWidget):
                     result.get('url', ''), result.get('all', {}))
         except Exception as e:
             self.sig.check_error.emit(alert['id'], str(e))
+        self.sig.check_done.emit()
         self.sig.status.emit(f'✓  Updated {datetime.now().strftime("%H:%M")}')
 
     def _run_checks(self):
@@ -859,7 +872,15 @@ class FlightWidget(QWidget):
                         result.get('url', ''), result.get('all', {}))
             except Exception as e:
                 self.sig.check_error.emit(a['id'], str(e))
+        self.sig.check_done.emit()
         self.sig.status.emit(f'✓  Updated {datetime.now().strftime("%H:%M")}')
+
+    def _on_check_done(self):
+        self._check_count += 1
+        t = datetime.now().strftime('%H:%M')
+        n = self._check_count
+        word = 'check' if n == 1 else 'checks'
+        self.check_counter_lbl.setText(f'✓  {n} {word} completed  ·  last at {t}')
 
     # ── Drag ───────────────────────────────────────────────────────────────
 

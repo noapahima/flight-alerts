@@ -323,7 +323,7 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
 
             # Merge with network-intercepted prices (no airline info)
             for v in aria_prices + captured_prices:
-                if v not in [p for _, p, _ in airline_prices]:
+                if v not in [e[1] for e in airline_prices]:
                     airline_prices.append(('Google Flights', v, search_url))
 
             if not airline_prices:
@@ -344,8 +344,9 @@ def _google_flights(origin, destination, date, return_date='', trip_type='OW'):
                     if 'booking' in booking_url and 'tfs=' in booking_url:
                         # Update cheapest entry with the direct booking URL
                         airline_prices = [
-                            (a, p, booking_url if p == cheapest_price else u)
-                            for a, p, u in airline_prices
+                            (e[0], e[1], booking_url if e[1] == cheapest_price else e[2])
+                            + ((e[3],) if len(e) > 3 else ())
+                            for e in airline_prices
                         ]
             except Exception:
                 pass  # keep the airline direct URL as fallback

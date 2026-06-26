@@ -212,10 +212,12 @@ def _parse_gf_airlines(body_text, base_url, origin='', destination='',
     for block in blocks:
         lines = [l.strip() for l in block.split('\n') if l.strip()]
         price_usd = None
+        price_ils = None
         for line in lines:
             m = re.search(r'₪\s*([\d,]+)', line)
             if m:
-                price_usd = int(m.group(1).replace(',', '')) // 4
+                price_ils = int(m.group(1).replace(',', ''))
+                price_usd = int(price_ils / 3.65)
                 break
             m = re.search(r'\$\s*(\d{2,4}(?:,\d{3})*)', line)
             if m:
@@ -239,13 +241,14 @@ def _parse_gf_airlines(body_text, base_url, origin='', destination='',
                         airline = line
                         break
         if airline:
-            # Use direct airline booking URL if we have route info
             if origin and destination and date:
                 url = airline_booking_url(airline, origin, destination,
                                           date, return_date, trip_type)
             else:
                 url = base_url
-            results.append((airline, price_usd, url))
+            # Store ILS price alongside USD so email can show both
+            label = f'₪{price_ils:,}' if price_ils else ''
+            results.append((airline, price_usd, url, label))
     return results
 
 
@@ -433,7 +436,7 @@ def _hulyo(origin, destination, date, return_date='', trip_type='OW'):
                 if 100 < v < 15000:
                     prices.append(v)
             for m in re.finditer(r'₪\s*(\d{3,5}(?:,\d{3})*)', body):
-                v = int(int(m.group(1).replace(',', '')) / 3.7)
+                v = int(int(m.group(1).replace(',', '')) / 3.65)
                 if 100 < v < 15000:
                     prices.append(v)
 
@@ -479,7 +482,7 @@ def _elal(origin, destination, date, return_date='', trip_type='OW'):
                 if 100 < v < 15000:
                     prices.append(v)
             for m in re.finditer(r'₪\s*(\d{3,5}(?:,\d{3})*)', body):
-                v = int(int(m.group(1).replace(',', '')) / 3.7)
+                v = int(int(m.group(1).replace(',', '')) / 3.65)
                 if 100 < v < 15000:
                     prices.append(v)
 
@@ -554,7 +557,7 @@ def get_cheapest_price(origin, destination, date,
                        return_date='', trip_type='OW', include_luggage=False,
                        amadeus_key='', amadeus_secret='', airlines=None):
     """airlines: optional list of airline name strings to filter results."""
-    results = {}  # name -> (price, url)
+    results = {}  # name -> (price_usd, url, ils_label)
 
     def _airline_matches(name):
         if not airlines:
@@ -568,18 +571,21 @@ def get_cheapest_price(origin, destination, date,
             if res is None:
                 print(f'  {name}: no results')
                 return
-            # Google Flights returns list of (airline, price, url)
+            # Google Flights returns list of (airline, price, url[, ils_label])
             if isinstance(res, list):
-                for airline, price, url in res:
+                for entry in res:
+                    airline, price, url = entry[0], entry[1], entry[2]
+                    ils_label = entry[3] if len(entry) > 3 else ''
                     if _airline_matches(airline):
-                        results[airline] = (price, url)
-                        print(f'  {airline}: ${price}')
-                if res and not any(_airline_matches(a) for a, _, _ in res):
+                        results[airline] = (price, url, ils_label)
+                        lbl = f' ({ils_label})' if ils_label else ''
+                        print(f'  {airline}: ${price}{lbl}')
+                if res and not any(_airline_matches(e[0]) for e in res):
                     print(f'  {name}: no results matching airline filter')
             else:
                 price, url = res
                 if _airline_matches(name):
-                    results[name] = (price, url)
+                    results[name] = (price, url, '')
                     print(f'  {name}: ${price}')
                 else:
                     print(f'  {name}: filtered out by airline preference')
@@ -598,11 +604,11 @@ def get_cheapest_price(origin, destination, date,
         return None
 
     best = min(results, key=lambda n: results[n][0])
-    price, url = results[best]
+    price, url, ils_label = results[best]
     return {
         'min_price': price,
         'url':       url,
-        'label':     '',
+        'label':     ils_label,
         'currency':  'USD',
         'source':    best,
         'timestamp': datetime.now().strftime('%H:%M'),

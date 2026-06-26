@@ -16,7 +16,8 @@ def _source_rows_html(all_results, max_price, currency, gf_search_url=''):
     html = ''
     try:
         for name, val in sorted(all_results.items(), key=lambda x: x[1][0]):
-            p, url = val
+            p, url = val[0], val[1]
+            ils_label = val[2] if len(val) > 2 else ''
             below  = p <= max_price
             color  = _SOURCE_COLORS.get(name, '#475569')
             border = '#BFDBFE' if below else '#E8EEF6'
@@ -52,7 +53,10 @@ def _source_rows_html(all_results, max_price, currency, gf_search_url=''):
                 f'{badge}{gf_btn}</span>'
                 f'<a href="{book_url}" style="font-size:14px;font-weight:bold;'
                 f'color:{price_color};text-decoration:none;white-space:nowrap;margin-left:8px;">'
-                f'{currency} {p:.0f} &rarr;</a>'
+                f'{currency} {p:.0f}'
+                + (f'<span style="font-size:11px;color:#94A3B8;font-weight:normal;'
+                   f'margin-left:4px;">({ils_label})</span>' if ils_label else '')
+                + f' &rarr;</a>'
                 f'</div>'
             )
     except Exception as e:
@@ -113,7 +117,11 @@ def send_price_alert(api_key, to_email, alert, price, currency,
         f'<div style="color:#065F46;font-size:11px;font-weight:bold;'
         f'letter-spacing:2px;text-transform:uppercase;">Found via {src}</div>'
         f'<div style="color:#10B981;font-size:34px;font-weight:bold;'
-        f'line-height:1.1;margin-top:2px;">{currency} {price:.0f}</div>'
+        f'line-height:1.1;margin-top:2px;">{currency} {price:.0f}'
+        + (f'<span style="font-size:16px;color:#6EE7B7;margin-left:8px;">({result_ils})</span>'
+           if (result_ils := next((v[2] for v in (all_results or {}).values()
+                                   if len(v) > 2 and v[2] and v[0] == price), '')) else '')
+        + f'</div>'
         f'<div style="color:#6EE7B7;font-size:11px;">'
         f'Your max: {currency} {alert["max_price"]:.0f}'
         f'&nbsp;&middot;&nbsp;Savings: {currency} {savings:.0f}</div>'
@@ -166,12 +174,29 @@ def send_no_deal_summary(api_key, to_email, alert, price, currency, all_results=
     tt    = '↔ Round trip' if alert.get('trip_type') == 'RT' else '→ One-way'
     ret   = f' → {alert["return_date"]}' if alert.get('return_date') else ''
 
-    source_rows = _source_rows_html(all_results or {}, alert['max_price'], currency)
+    # Build Google Flights search URL for summary email
+    from datetime import datetime as dt
+    o2, d2 = alert['origin'], alert['destination']
+    if alert.get('trip_type') == 'RT' and alert.get('return_date'):
+        gf_summary_url = (f"https://www.google.com/travel/flights?hl=en&q="
+                          f"round+trip+flights+{o2}+to+{d2}+on+{alert['date']}+return+{alert['return_date']}")
+    else:
+        gf_summary_url = (f"https://www.google.com/travel/flights?hl=en&q="
+                          f"one+way+flights+{o2}+to+{d2}+on+{alert['date']}")
+
+    source_rows = _source_rows_html(all_results or {}, alert['max_price'], currency, gf_summary_url)
+
+    # Get ILS label for cheapest if available
+    ils_str = ''
+    if all_results and price:
+        cheapest_entry = min(all_results.values(), key=lambda x: x[0])
+        if len(cheapest_entry) > 2 and cheapest_entry[2]:
+            ils_str = f' ({cheapest_entry[2]})'
 
     if price:
         body_html = (
             f'<p style="font-size:15px;color:#0F172A;">Cheapest found: '
-            f'<b>{currency} {price:.0f}</b> — above your max of '
+            f'<b>{currency} {price:.0f}{ils_str}</b> — above your max of '
             f'<b>{currency} {alert["max_price"]:.0f}</b>.</p>'
             f'<p style="font-size:13px;color:#64748B;">We\'ll keep watching and alert you '
             f'the moment a price drops below your threshold.</p>'

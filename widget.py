@@ -802,11 +802,16 @@ class FlightWidget(QWidget):
             return
         below = price <= alert['max_price']
         card.update_price(price, currency, below, source)
-        if below and alert.get('email') and self.config.get('resend_api_key'):
+        if alert.get('email') and self.config.get('resend_api_key'):
             try:
-                notifier.send_price_alert(
-                    self.config.get('resend_api_key', ''),
-                    alert['email'], alert, price, currency, source, direct_url, all_results)
+                if below:
+                    notifier.send_price_alert(
+                        self.config.get('resend_api_key', ''),
+                        alert['email'], alert, price, currency, source, direct_url, all_results)
+                else:
+                    notifier.send_no_deal_summary(
+                        self.config.get('resend_api_key', ''),
+                        alert['email'], alert, price, currency, all_results)
             except Exception as e:
                 self.sig.status.emit(f'⚠ Mail error: {str(e)[:40]}')
 
